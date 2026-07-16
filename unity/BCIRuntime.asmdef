@@ -1,0 +1,17 @@
+{
+    "name": "BCIRuntime",
+    "rootNamespace": "BCIRuntime",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "NetMQ.dll",
+        "AsyncIO.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+*.spec
+!bci-runtime.spec
+
+# Native bridge
+native/build/
+
+# .NET
+csharp_mock/bin/
+csharp_mock/obj/
+*.sln
+*.suo
+*.user
+
+# Unity
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Bb]uild/
+unity/*.csproj
+unity/*.sln
+
+# Unity build output
+unity-build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test cache
+.pytest_cache/
+
+# Logs
+*.log

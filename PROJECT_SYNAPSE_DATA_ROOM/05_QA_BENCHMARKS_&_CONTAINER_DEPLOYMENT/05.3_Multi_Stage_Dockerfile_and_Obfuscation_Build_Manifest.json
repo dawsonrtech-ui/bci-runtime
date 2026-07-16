@@ -1,0 +1,48 @@
+{
+  "manifest_version": "1.0.0",
+  "project": "Project Synapse",
+  "build_system": "multi-stage Docker",
+  "base_images": {
+    "builder": "python:3.11-slim",
+    "runtime": "debian:bookworm-slim"
+  },
+  "build_stages": [
+    {
+      "stage": "builder",
+      "purpose": "PyInstaller compilation of all Python source + native .so/.dll into single binary",
+      "system_deps": ["build-essential", "libzmq3-dev", "libomp-dev"],
+      "python_deps": ["numpy", "scipy", "numba", "brainflow", "pyzmq", "pyinstaller", "cryptography"],
+      "output": "/build/dist/bci-runtime/ (single compiled binary + supporting loader)"
+    },
+    {
+      "stage": "runtime",
+      "purpose": "Minimal Debian image containing only the compiled binary + system runtime libs + JSON config",
+      "system_deps": ["libzmq5", "libgomp1", "libstdc++6", "ca-certificates"],
+      "source_artifacts": "NONE — only compiled binary is copied. No .py, .dll, .so, .c, .h files are present in the runtime layer."
+    }
+  ],
+  "exposed_ports": [
+    {"port": 5555, "protocol": "tcp", "purpose": "ZeroMQ PUB gateway — Unity client telemetry stream"},
+    {"port": 5556, "protocol": "tcp", "purpose": "ZeroMQ ROUTER — arbitration server for multi-user evaluation"}
+  ],
+  "environment_variables": [
+    {"name": "BCI_BIND_HOST", "default": "0.0.0.0", "purpose": "Gateway bind address (0.0.0.0 for Docker ingress)"},
+    {"name": "BCI_SHARED_KEY", "required": true, "source": "host env var only", "purpose": "256-bit AES-GCM key (64 hex chars)"},
+    {"name": "BCI_DAEMON_CONFIG", "default": "/app/daemon_config.json", "purpose": "Runtime configuration file path"}
+  ],
+  "resource_constraints": {
+    "cpu_limit": "2.0 cores",
+    "memory_limit": "512 MB",
+    "cpu_reservation": "0.5 cores",
+    "memory_reservation": "128 MB"
+  },
+  "security_controls": [
+    "No source code files present in runtime image",
+    "No plaintext keys in image layers or config files",
+    "Single compiled binary as entrypoint — no shell access required",
+    "HWM=1000 on all ZMQ proxy sockets to bound memory growth",
+    "AES-256-GCM AEAD encryption on all wire traffic"
+  ],
+  "build_command": "docker compose build",
+  "run_command": "docker compose up -d"
+}

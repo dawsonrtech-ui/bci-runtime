@@ -1,0 +1,20 @@
+{
+  "board_id": null,
+  "low_dim_channels": 8,
+  "sample_rate": 250,
+  "alpha": 0.05,
+  "gamma": 0.05,
+  "init_seconds": 10,
+  "recovery_frames": 50,
+  "enable_gateway": true,
+  "gateway_port": 5555,
+  "gateway_host": "127.0.0.1",
+  "health_port": 5557,
+  "amplitude_max": 0.0005,
+  "profile_path": null,
+  "csp_n_components": 4,
+  "use_native_bridge": true,
+  "enable_shm_gustation": true,
+  "shm_gustation_name": "Local_BCI_GustationRing",
+  "shm_signal_name": "Local_BCI_GustationWake"
+}

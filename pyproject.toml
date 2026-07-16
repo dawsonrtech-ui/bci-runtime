@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bci-runtime"
+version = "2.1.0"
+description = "Project Synapse — BCI Neural Engine Runtime with shared-memory IPC"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = [
+    "bci", "brain-computer-interface", "eeg", "shared-memory",
+    "ipc", "signal-processing", "riemannian-geometry",
+]
+authors = [
+    { name = "Project Synapse", email = "dev@project-synapse.io" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Distributed Computing",
+]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pyzmq>=25.0.0",
+]
+
+[project.optional-dependencies]
+full = [
+    "numba>=0.57.0",
+    "brainflow>=5.1.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "build>=1.0.0",
+    "twine>=4.0.0",
+]
+bridge = []  # native bridge compiled at install time via setup.py
+
+[project.scripts]
+bci-daemon = "daemon_entry:main"
+
+[project.urls]
+Homepage = "https://github.com/your-org/bci-runtime"
+Documentation = "https://github.com/your-org/bci-runtime/wiki"
+Source = "https://github.com/your-org/bci-runtime"
+
+[tool.setuptools.packages.find]
+include = [
+    "core*",
+    "board*",
+    "bridge*",
+]
+
+[tool.setuptools.package-data]
+"core" = [
+    "py.typed",
+]
+"native" = [
+    "build/*.so",
+    "build/*.dll",
+    "build/*.dylib",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (dotnet build, cross-process, E2E)",
+]
+
+[tool.build]
+native = "make -C native host"

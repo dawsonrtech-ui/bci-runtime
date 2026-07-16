@@ -1,0 +1,43 @@
+name: BCI Core Runtime Performance Verification CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  profile-matrix:
+    name: Profiling Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11"]
+
+    steps:
+    - name: Checkout Repository Source Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python Environment (${{ matrix.python-version }})
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install System Dependencies (Linux Only)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libzmq3-dev
+
+    - name: Install Architecture Python Requirements
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyzmq
+
+    - name: Run High-Speed Performance Profiling Engine
+      run: |
+        python tests/ci_performance_profiler.py

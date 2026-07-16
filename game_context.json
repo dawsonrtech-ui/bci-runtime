@@ -1,0 +1,64 @@
+{
+  "camera": {
+    "x": 0.0,
+    "y": 1.7,
+    "z": 0.0,
+    "fov": 90.0
+  },
+  "audio": {
+    "spatial_nodes": 64,
+    "dsp_gain": 1.0,
+    "dsp_pan": 0.0,
+    "dsp_occlusion": 0.0
+  },
+  "somatosensory": {
+    "collision_impulse": 0.0,
+    "thermal_target_c": 22.0,
+    "motor_gating_active": true
+  },
+  "olfactory": {
+    "intensity": 0.5,
+    "bulb_address": 0
+  },
+  "gustation": {
+    "mix_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "channel_count": 5
+  },
+  "in_high_stimulus": false
+}

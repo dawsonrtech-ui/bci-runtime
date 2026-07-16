@@ -1,0 +1,17 @@
+timestamp_sec,event,state,cpu_pct,memory_mb,threads,samples_processed,frame_latency_us
+0,container_start,INIT,0.0,48,4,0,0.0
+1,calibration_start,INIT,12.3,62,4,250,0.0
+2,calibration_mid,INIT,18.7,78,4,500,0.0
+3,calibration_end,NORMAL,15.2,92,4,500,206.1
+10,steady_state,NORMAL,8.4,104,5,3000,205.8
+30,steady_state,NORMAL,7.9,108,5,8000,204.9
+60,steady_state,NORMAL,8.1,108,5,15500,206.3
+61,noise_burst_start,COASTING,22.4,112,6,15501,0.0
+62,noise_burst_mid,COASTING,24.1,114,6,15510,0.0
+63,burst_recovery_start,NORMAL,19.8,112,6,15511,207.1
+65,recovered,NORMAL,8.3,110,5,15600,205.8
+90,steady_state,NORMAL,7.8,108,5,23500,206.0
+120,steady_state,NORMAL,7.6,108,5,31500,206.2
+180,steady_state,NORMAL,7.5,108,5,47500,206.1
+240,steady_state,NORMAL,7.4,108,5,63500,206.0
+300,shutdown,DEGRADED,5.2,92,4,65000,0.0

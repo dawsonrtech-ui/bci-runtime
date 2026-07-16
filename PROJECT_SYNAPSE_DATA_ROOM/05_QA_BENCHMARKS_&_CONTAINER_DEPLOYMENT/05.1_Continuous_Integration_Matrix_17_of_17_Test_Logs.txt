@@ -1,0 +1,65 @@
+====================================================================
+PROJECT SYNAPSE — CONTINUOUS INTEGRATION TEST MATRIX
+====================================================================
+Date: 2026-07-14
+Platform: Windows 11 AMD64 (CI matrix: ubuntu-latest, windows-latest, macos-latest)
+Python: 3.10, 3.11
+Command: python tests/test_orchestrator.py
+====================================================================
+
+[Test] Signal dropout detection...
+  [PASS] Zero vector -> DEGRADED, w=0
+
+[Test] Saturation/rail detection...
+  [PASS] Rail -> DEGRADED
+
+[Test] NaN/Inf detection...
+  [PASS] NaN -> DEGRADED
+  [PASS] Inf -> DEGRADED
+
+[Test] Blink artifact detection...
+  [PASS] Clean -> NORMAL
+  [PASS] Blink -> COASTING
+
+[Test] INITIALIZING -> NORMAL transition...
+  [PASS] Transitioned after 500 frames, ref_cov: (8, 8)
+
+[Test] DEGRADED freezes adaptation...
+  [PASS] No new sigmas in DEGRADED
+
+[Test] Recovery DEGRADED -> NORMAL...
+  [PASS] Recovered after 30 clean frames
+
+[Test] MultiClass effective sample size...
+  [PASS] Sizes: [20.0, 13.33, 12.0, 11.43], Alphas: [0.05, 0.075, 0.083, 0.0875]
+
+[Test] COASTING preserves L...
+  [PASS] L frozen (diff=0.00e+00)
+
+[Test] Entropy dampens eta...
+  [PASS] entropy=0.900, eta=0.00050
+
+[Test] TVE blocks before buffer fills...
+  [PASS] Blocks before buffer fill
+
+[Test] TVE blocks high-entropy model outputs...
+  [PASS] High-entropy [0.33,0.34,0.33] blocked
+
+[Test] TVE passes confident majority vote...
+  [PASS] Confident action 1 passes
+
+[Test] TVE resets when orchestrator enters DEGRADED...
+  [PASS] TVE cleared on DEGRADED
+
+[Test] TVE suppresses erratic outputs during high-noise artifact state...
+  [PASS] Erratic artifacts suppressed during COASTING
+
+[Test] TVE multi-user burst with noisy artifacts...
+  [PASS] Multi-user burst (4 users x 10 frames) completed cleanly
+
+[Test] Full pipeline (orchestrator + stream + metrics)...
+  [PASS] Sigmas=2500, Tangent=2500, Cond=1.0
+
+====================================================================
+RESULTS: 17 passed, 0 failed out of 17
+====================================================================

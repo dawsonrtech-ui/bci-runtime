@@ -1,0 +1,31 @@
+services:
+  bci-runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bci-runtime:latest
+    container_name: bci-neural-engine
+    ports:
+      - "5555:5555"
+      - "5556:5556"
+      - "5557:5557"
+    environment:
+      - BCI_BIND_HOST=0.0.0.0
+      - BCI_SHARED_KEY=${BCI_SHARED_KEY:-}
+      - BCI_DAEMON_CONFIG=/app/daemon_config.json
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "bci-runtime"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 128M
