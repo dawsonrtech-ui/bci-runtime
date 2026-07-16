@@ -18,9 +18,13 @@ from core.shm_gustation import (
 )
 
 import ctypes
+import pytest
 
 # ── helpers ────────────────────────────────────────────────────
 
+
+HAS_NATIVE = False
+_lib = None
 
 def _load_signal_lib():
     from core.native_bridge import _find_lib
@@ -38,6 +42,17 @@ def _load_signal_lib():
     lib.close_os_signal.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     lib.close_os_signal.restype = None
     return lib
+
+try:
+    _lib = _load_signal_lib()
+    HAS_NATIVE = True
+except (OSError, AssertionError):
+    pass
+
+needs_native = pytest.mark.skipif(
+    not HAS_NATIVE,
+    reason="native bridge DLL not available on this platform",
+)
 
 
 def _cleanup():
@@ -108,6 +123,7 @@ def test_200hz_throughput():
 #  Test 2:  Signal wake latency
 # ═══════════════════════════════════════════════════════════════
 
+@needs_native
 def test_signal_wake_latency():
     """Measure round-trip latency: producer triggers signal -> consumer wakes
     and reads frame.  Uses the OS signal handle from C for precise timing."""

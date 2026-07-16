@@ -1,7 +1,11 @@
 import sys, os, time, ctypes
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+HAS_NATIVE = False
+lib = None
 
 def _load_signal_lib():
     from core.native_bridge import _find_lib
@@ -20,10 +24,22 @@ def _load_signal_lib():
     lib.close_os_signal.restype = None
     return lib
 
+try:
+    lib = _load_signal_lib()
+    HAS_NATIVE = True
+except (OSError, AssertionError):
+    pass
+
+needs_native = pytest.mark.skipif(
+    not HAS_NATIVE,
+    reason="native bridge DLL not available on this platform",
+)
+
 
 SIG_NAME = "Local_BCI_TestSignal"
 
 
+@needs_native
 def test_create_and_destroy():
     lib = _load_signal_lib()
     h = lib.create_os_signal(SIG_NAME.encode("utf-8"))
@@ -33,6 +49,7 @@ def test_create_and_destroy():
     print("create_and_destroy OK")
 
 
+@needs_native
 def test_open_and_trigger():
     lib = _load_signal_lib()
     h = lib.create_os_signal(SIG_NAME.encode("utf-8"))
@@ -51,6 +68,7 @@ def test_open_and_trigger():
     print("open_and_trigger OK")
 
 
+@needs_native
 def test_timeout():
     lib = _load_signal_lib()
     h = lib.create_os_signal(SIG_NAME.encode("utf-8"))
@@ -63,6 +81,7 @@ def test_timeout():
     print("timeout OK")
 
 
+@needs_native
 def test_empty_to_non_empty_trigger():
     from core.shm_gustation import (
         ShmGustationProducer, ShmGustationConsumer,

@@ -1,4 +1,4 @@
-import os
+import os, sys
 import ctypes
 from ctypes import (
     c_int, c_double, c_char, c_char_p, c_uint, POINTER, Structure, CDLL
@@ -9,13 +9,12 @@ _LIB: Optional[CDLL] = None
 
 
 def _find_lib() -> Optional[str]:
-    os_name = os.uname().sysname if hasattr(os, "uname") else os.name
-    if os_name == "Linux":
-        exts = [".so", ".dll", ".dylib"]
-    elif os_name == "Darwin":
-        exts = [".dylib", ".so", ".dll"]
+    if os.name == "nt":
+        exts = [".dll"]
+    elif sys.platform == "darwin":
+        exts = [".dylib", ".so"]
     else:
-        exts = [".dll", ".so", ".dylib"]
+        exts = [".so", ".dll", ".dylib"]
     candidates = [
         os.path.join(
             os.path.dirname(__file__),
