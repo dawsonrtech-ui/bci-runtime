@@ -18,9 +18,10 @@ class BciNativeBuild(build_ext):
 
     def run(self):
         print(f"[bci-runtime] Compiling native bridge in: {NATIVE_DIR}")
-        targets = {"win32": ("bci_bridge.dll", "host"),
-                   "darwin": ("libbci_bridge.dylib", "macos-arm64")}
-        ext, make_target = targets.get(sys.platform, ("libbci_bridge.so", "host"))
+        targets = {"win32": ("bci_bridge.dll", "bci_bridge.dll"),
+                   "darwin": ("libbci_bridge.dylib", "macos-arm64"),
+                   "linux": ("libbci_bridge.so", "libbci_bridge.so")}
+        ext, make_target = targets.get(sys.platform, ("libbci_bridge.so", "libbci_bridge.so"))
 
         try:
             subprocess.check_call(

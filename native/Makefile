@@ -38,6 +38,14 @@ $(BUILD_DIR)/bci_bridge.dll: $(BRIDGE_SRC) $(SIGNAL_SRC) $(SHM_ACCESS_SRC) | $(B
 	cl /O2 /std:c17 /W4 /WX /LD \
 		$(BRIDGE_SRC) $(SIGNAL_SRC) $(SHM_ACCESS_SRC) /Fe$@
 
+# ─── Bridge-only targets (for CI wheel build) ───────────────────
+
+.PHONY: libbci_bridge.so
+libbci_bridge.so: $(BUILD_DIR)/libbci_bridge.so
+
+.PHONY: bci_bridge.dll
+bci_bridge.dll: $(BUILD_DIR)/bci_bridge.dll
+
 # ─── Linux x64 (CI / Docker runtime) ────────────────────────────
 
 LB_TARGETS := linux-amd64
