@@ -1,0 +1,31 @@
+{
+  "name": "com.bci-runtime.shm",
+  "version": "2.1.0",
+  "displayName": "BCI Runtime — Shared Memory IPC",
+  "description": "Cross-process shared-memory ring buffer with OS-event signaling for BCI neural-engine-to-unity communication.\n\nSupports Windows (kernel32) and Linux (POSIX semaphores) backends.\nPart of Project Synapse.",
+  "unity": "2022.3",
+  "documentationUrl": "https://github.com/your-org/bci-runtime/tree/main/Packages/com.bci-runtime.shm",
+  "license": "MIT",
+  "keywords": [
+    "bci",
+    "ipc",
+    "shared-memory",
+    "signal",
+    "gustation",
+    "brain-computer-interface"
+  ],
+  "author": {
+    "name": "Project Synapse",
+    "email": "dev@project-synapse.io",
+    "url": "https://project-synapse.io"
+  },
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "SHM Consumer Example",
+      "description": "Example scene with ShmNativeConsumer attached and wired to debug output.",
+      "path": "Samples~/ShmConsumerExample"
+    }
+  ],
+  "type": "library"
+}
