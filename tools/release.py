@@ -18,10 +18,19 @@ PKG_JSON = ROOT / "Packages" / "com.bci-runtime.shm" / "package.json"
 UPM_BRANCH = "upm"
 
 
+def log(msg):
+    print(f"[release] {msg}", flush=True)
+
+
+def die(msg, code=1):
+    log(f"FATAL: {msg}")
+    sys.exit(code)
+
+
 def parse_tag(tag: str) -> str:
     m = re.match(r"^v?(\d+\.\d+\.\d+.*)$", tag.strip())
     if not m:
-        raise SystemExit(f"Invalid tag: {tag!r}. Expected vMAJOR.MINOR.PATCH")
+        die(f"Invalid tag: {tag!r}. Expected vMAJOR.MINOR.PATCH")
     return m.group(1)
 
 
@@ -33,34 +42,51 @@ def inject_version(version: str):
     with open(PKG_JSON, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
-    print(f"[release] package.json: {old} → {version}")
+    log(f"package.json: {old} → {version}")
 
 
 def build_wheel():
+    log("Building wheel ...")
     subprocess.check_call(
         [sys.executable, "-m", "build", "--wheel", str(ROOT)],
         stdout=sys.stdout, stderr=sys.stderr,
     )
     wheels = list((ROOT / "dist").glob("*.whl"))
-    print(f"[release] Wheel: {wheels[0].name if wheels else 'NOT FOUND'}")
+    if not wheels:
+        die("Wheel not found after build")
+    log(f"Wheel: {wheels[0].name}")
 
 
 def push_upm_branch():
-    """Extract Packages/com.bci-runtime.shm/ into a clean 'upm' branch."""
+    log("Pushing UPM branch ...")
     pkg_dir = ROOT / "Packages" / "com.bci-runtime.shm"
+    if not pkg_dir.is_dir():
+        die(f"Package dir not found: {pkg_dir}")
+
+    # Ensure git user is configured (CI runners may not have it)
+    for key, val in (("user.name", "github-actions[bot]"),
+                     ("user.email", "github-actions[bot]@users.noreply.github.com")):
+        try:
+            subprocess.run(["git", "config", key, val],
+                           cwd=ROOT, capture_output=True, check=False)
+        except Exception:
+            pass
+
     with tempfile.TemporaryDirectory() as tmp:
-        # Copy package contents to temp dir
         dst = Path(tmp) / "pkg"
         shutil.copytree(pkg_dir, dst, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.meta"))
 
-        # Create/overwrite upm branch
-        subprocess.check_call(
-            ["git", "checkout", "--orphan", UPM_BRANCH],
-            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        # Create or reset UPM orphan branch
+        try:
+            subprocess.check_call(
+                ["git", "checkout", "--orphan", UPM_BRANCH],
+                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            die(f"git checkout --orphan failed (exit {e.returncode})")
 
-        # Remove everything, copy package contents
+        # Remove everything except .git
         for item in ROOT.iterdir():
             if item.name != ".git":
                 if item.is_dir():
@@ -71,10 +97,13 @@ def push_upm_branch():
         shutil.copytree(dst, ROOT, dirs_exist_ok=True)
 
         subprocess.check_call(["git", "add", "-A"], cwd=ROOT)
-        subprocess.check_call(
-            ["git", "commit", "-m", f"release {version} [UPM]"],
-            cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.check_call(
+                ["git", "commit", "-m", f"release {version} [UPM]"],
+                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            die(f"git commit failed (exit {e.returncode}): staging issue?")
 
         # Push
         token = os.environ.get("GITHUB_TOKEN", "")
@@ -90,7 +119,7 @@ def push_upm_branch():
             ["git", "push", "--force", remote, UPM_BRANCH],
             cwd=ROOT, stdout=sys.stdout, stderr=sys.stderr,
         )
-        print(f"[release] Pushed {UPM_BRANCH} branch")
+        log(f"Pushed {UPM_BRANCH} branch")
 
 
 if __name__ == "__main__":
@@ -98,26 +127,49 @@ if __name__ == "__main__":
     tag = args[0] if args else os.environ.get("GITHUB_REF_NAME", "")
     do_push = "--push" in args
 
-    version = parse_tag(tag)
-    print(f"[release] Tag: {tag} → version: {version}")
+    if not tag:
+        die("No tag provided and GITHUB_REF_NAME not set")
 
+    version = parse_tag(tag)
+    log(f"Tag: {tag} → version: {version}")
+
+    # Step 1: inject version
     inject_version(version)
 
-    build_wheel()
+    # Step 2: build wheel
+    try:
+        build_wheel()
+    except Exception as e:
+        die(f"Wheel build failed: {e}")
 
+    # Step 3: upload to PyPI
     pypi_token = os.environ.get("PYPI_TOKEN", "")
     if pypi_token:
-        subprocess.check_call([
-            sys.executable, "-m", "twine", "upload",
-            "--username", "__token__",
-            "--password", pypi_token,
-            *[str(p) for p in (ROOT / "dist").glob("*.whl")],
-        ], stdout=sys.stdout, stderr=sys.stderr)
-        print("[release] Uploaded to PyPI")
+        log("Uploading to PyPI ...")
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "twine", "upload",
+                "--username", "__token__",
+                "--password", pypi_token,
+                *[str(p) for p in (ROOT / "dist").glob("*.whl")],
+            ], stdout=sys.stdout, stderr=sys.stderr)
+            log("Uploaded to PyPI")
+        except Exception as e:
+            log(f"PyPI upload failed (non-fatal): {e}")
+    else:
+        log("PYPI_TOKEN not set; skipping PyPI upload")
 
-    if do_push and os.environ.get("GITHUB_TOKEN"):
-        push_upm_branch()
-    elif do_push:
-        print("[release] --push requires GITHUB_TOKEN; skipping branch push")
+    # Step 4: push UPM branch
+    if do_push:
+        github_token = os.environ.get("GITHUB_TOKEN", "")
+        if github_token:
+            try:
+                push_upm_branch()
+            except Exception as e:
+                die(f"UPM branch push failed: {e}")
+        else:
+            log("--push requires GITHUB_TOKEN; skipping branch push")
+    else:
+        log("Dry-run; skipping branch push (pass --push to push)")
 
-    print("[release] Done")
+    log("Done")
