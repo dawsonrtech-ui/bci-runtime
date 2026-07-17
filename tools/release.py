@@ -86,9 +86,10 @@ def push_upm_branch():
         except subprocess.CalledProcessError as e:
             die(f"git checkout --orphan failed (exit {e.returncode})")
 
-        # Remove everything except .git
+        # Remove everything except .git and dist/ (wheel artifacts)
+        KEEP = {".git", "dist"}
         for item in ROOT.iterdir():
-            if item.name != ".git":
+            if item.name not in KEEP:
                 if item.is_dir():
                     shutil.rmtree(item, ignore_errors=True)
                 else:
@@ -96,7 +97,15 @@ def push_upm_branch():
 
         shutil.copytree(dst, ROOT, dirs_exist_ok=True)
 
+        # Stage package files, explicitly exclude dist/ (wheel artifacts)
         subprocess.check_call(["git", "add", "-A"], cwd=ROOT)
+        # Remove any staged dist/ files from the UPM commit
+        dist_dir = ROOT / "dist"
+        if dist_dir.is_dir():
+            subprocess.check_call(
+                ["git", "rm", "-r", "--cached", "--ignore-unmatch", "dist/"],
+                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
         try:
             subprocess.check_call(
                 ["git", "commit", "-m", f"release {version} [UPM]"],
