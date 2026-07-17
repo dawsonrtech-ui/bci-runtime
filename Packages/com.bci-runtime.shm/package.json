@@ -30,6 +30,11 @@
       "displayName": "BCI Full Dashboard",
       "description": "Complete dashboard with scalp topography, scrolling 8-channel waveform, control panel (FPS, ACKs, commands), and CSV recording. Attach BCIDashboard.cs to any GameObject and hit Play.",
       "path": "Samples~/BCIDashboard"
+    },
+    {
+      "displayName": "BCI Audio Renderer",
+      "description": "Spatial audio renderer. Attach BCIAudioRenderer.cs to any GameObject; 8 AudioSources positioned in a 3D ring modulate volume by channel intensity.",
+      "path": "Samples~/BCIAudio"
     }
   ],
   "type": "library"
