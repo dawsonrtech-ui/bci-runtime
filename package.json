@@ -1,10 +1,10 @@
 {
   "name": "com.bci-runtime.shm",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "displayName": "BCI Runtime \u2014 Shared Memory IPC",
   "description": "Cross-process shared-memory ring buffer with OS-event signaling for BCI neural-engine-to-unity communication.\n\nSupports Windows (kernel32) and Linux (POSIX semaphores) backends.\nPart of Project Synapse.",
   "unity": "2022.3",
-  "documentationUrl": "https://github.com/your-org/bci-runtime/tree/main/Packages/com.bci-runtime.shm",
+  "documentationUrl": "https://github.com/dawsonrtech-ui/bci-runtime/tree/main/Packages/com.bci-runtime.shm",
   "license": "MIT",
   "keywords": [
     "bci",
