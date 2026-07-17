@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BCI Topography — Live</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #0a0a0a; color: #ccc; font-family: monospace; }
+  #info {
+    position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.7);
+    padding: 10px 16px; border-radius: 6px; font-size: 13px; pointer-events: none;
+  }
+  #info span { color: #4f8; }
+  #bars {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; align-items: flex-end; height: 120px;
+  }
+  .bar {
+    width: 30px; border-radius: 3px 3px 0 0; transition: height 0.08s;
+    min-height: 2px; background: linear-gradient(to top, #0a4, #0f8);
+  }
+  .bar-label { position: absolute; bottom: -18px; font-size: 10px; color: #888; text-align: center; width: 30px; }
+</style>
+</head>
+<body>
+<div id="info">
+  FPS: <span id="fps">0</span> &nbsp;|&nbsp; Frame: <span id="frame">0</span>
+  &nbsp;|&nbsp; Channels: <span id="channels">0</span>
+  &nbsp;|&nbsp; Heartbeat: <span id="heartbeat">0</span>
+</div>
+<div id="bars"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Scene setup ──
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0a);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 10);
+camera.position.set(-2.5, 1.8, 2.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.2, 0);
+controls.enableDamping = true;
+controls.update();
+
+// ── Hemisphere mesh ──
+const SEG = 32, RINGS = 12, RAD = 1;
+const geo = new THREE.BufferGeometry();
+const verts = [], uvs = [], idxs = [];
+
+verts.push(0, RAD*0.3, 0);
+uvs.push(0.5, 0.5);
+
+for (let r = 1; r <= RINGS; r++) {
+  const lat = (r / RINGS) * Math.PI * 0.5;
+  const y = Math.cos(lat) * RAD;
+  const rr = Math.sin(lat) * RAD;
+  for (let s = 0; s < SEG; s++) {
+    const lon = (s / SEG) * Math.PI * 2;
+    verts.push(Math.cos(lon)*rr, y, Math.sin(lon)*rr);
+    uvs.push(s/SEG, r/RINGS);
+    const v = verts.length/3 - 1;
+    if (r === 1) {
+      idxs.push(0, v, (s+1)%SEG + 1);
+    } else {
+      const pr = (r-2)*SEG + 1, cr = (r-1)*SEG + 1, nx = (s+1)%SEG;
+      idxs.push(pr+s, cr+s, pr+nx, cr+s, cr+nx, pr+nx);
+    }
+  }
+}
+
+geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+geo.setIndex(idxs);
+geo.computeVertexNormals();
+
+const colors = new Float32Array(verts.length);
+geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+const mat = new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: 0.6, metalness: 0.1,
+});
+const mesh = new THREE.Mesh(geo, mat);
+scene.add(mesh);
+
+// ── Electrode markers ──
+const N_CH = 8;
+const electrodes = [];
+const barContainer = document.getElementById('bars');
+
+for (let i = 0; i < N_CH; i++) {
+  const angle = (i / N_CH) * Math.PI * 2;
+  const lat = Math.PI * 0.35;
+  const x = Math.cos(angle) * Math.sin(lat) * RAD;
+  const y = Math.cos(lat) * RAD;
+  const z = Math.sin(angle) * Math.sin(lat) * RAD;
+
+  const sp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x888888 })
+  );
+  sp.position.set(x, y, z);
+  scene.add(sp);
+  electrodes.push(sp);
+
+  // HTML bars
+  const wrap = document.createElement('div');
+  wrap.style.position = 'relative';
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.alignItems = 'center';
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  bar.style.height = '2px';
+  const lbl = document.createElement('div');
+  lbl.className = 'bar-label';
+  lbl.textContent = `Ch${i}`;
+  wrap.appendChild(bar);
+  wrap.appendChild(lbl);
+  barContainer.appendChild(wrap);
+  electrodes[i]._bar = bar;
+}
+
+// ── Lights ──
+const ambient = new THREE.AmbientLight(0x333333);
+scene.add(ambient);
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(3, 5, 4);
+scene.add(dir);
+
+// ── Data ──
+let intensities = new Array(N_CH).fill(0);
+let frameCount = 0;
+let hb = 0;
+
+// ── WebSocket ──
+const ws = new WebSocket(`ws://${location.hostname}:8765`);
+ws.onmessage = (e) => {
+  const d = JSON.parse(e.data);
+  frameCount = d.packet_id;
+  hb = d.heartbeat;
+  for (let i = 0; i < d.channel_count && i < N_CH; i++) {
+    intensities[i] = d.channels[i].intensity;
+  }
+};
+ws.onclose = () => console.log('WS disconnected');
+
+// ── Render loop ──
+const BASE = new THREE.Color(0x222222);
+const HOT = new THREE.Color(0xff6600);
+let lastFps = 0, fpsFrames = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  fpsFrames++;
+  const now = performance.now();
+  if (now - lastFps > 1000) {
+    document.getElementById('fps').textContent = Math.round(fpsFrames * 1000 / (now - lastFps));
+    fpsFrames = 0;
+    lastFps = now;
+  }
+
+  // Update vertex colors
+  const pos = geo.attributes.position.array;
+  const col = geo.attributes.color.array;
+  const INF_RAD = 0.35;
+  for (let v = 0; v < pos.length / 3; v++) {
+    let acc = 0, tw = 0;
+    for (let j = 0; j < N_CH; j++) {
+      const dx = pos[v*3] - electrodes[j].position.x;
+      const dy = pos[v*3+1] - electrodes[j].position.y;
+      const dz = pos[v*3+2] - electrodes[j].position.z;
+      const dist = Math.sqrt(dx*dx+dy*dy+dz*dz);
+      const w = Math.exp(-(dist*dist)/(INF_RAD*INF_RAD));
+      acc += intensities[j] * w;
+      tw += w;
+    }
+    const n = tw > 0 ? Math.min(Math.max(acc/tw, 0), 1) : 0;
+    const c = BASE.clone().lerp(HOT, n);
+    col[v*3] = c.r; col[v*3+1] = c.g; col[v*3+2] = c.b;
+  }
+  geo.attributes.color.needsUpdate = true;
+
+  // Update bars
+  for (let i = 0; i < N_CH; i++) {
+    const h = Math.max(2, intensities[i] * 200);
+    electrodes[i]._bar.style.height = h + 'px';
+    electrodes[i].material.color.setHSL(0.08 - intensities[i]*0.08, 0.8, 0.3 + intensities[i]*0.5);
+  }
+
+  document.getElementById('frame').textContent = frameCount;
+  document.getElementById('channels').textContent = N_CH;
+  document.getElementById('heartbeat').textContent = hb;
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
