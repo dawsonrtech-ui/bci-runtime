@@ -5,27 +5,27 @@ Shader "BCI/ScalpTopography"
         _BaseColor ("Base Color", Color) = (0.2, 0.2, 0.2, 1.0)
         _ColdColor ("Negative Charge Color", Color) = (0.0, 0.3, 1.0, 1.0)
         _HotColor ("Positive Charge Color", Color) = (1.0, 0.1, 0.0, 1.0)
-        _InfluenceRadius ("Influence Radius", Float) = 0.15
+        _InfluenceRadius ("Influence Radius", Float) = 0.3
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" "RenderPipeline"="UniversalPipeline" }
+        Tags { "RenderType"="Opaque" }
         Pass
         {
-            HLSLPROGRAM
+            CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "UnityCG.cginc"
 
-            struct Attributes
+            struct appdata
             {
-                float4 positionOS   : POSITION;
+                float4 vertex : POSITION;
             };
 
-            struct Varyings
+            struct v2f
             {
-                float4 positionCS   : SV_POSITION;
-                float4 color        : COLOR;
+                float4 vertex : SV_POSITION;
+                float4 color : COLOR;
             };
 
             uniform float3 _ElectrodePositions[16];
@@ -37,43 +37,35 @@ Shader "BCI/ScalpTopography"
             float4 _HotColor;
             float _InfluenceRadius;
 
-            Varyings vert(Attributes input)
+            v2f vert(appdata v)
             {
-                Varyings output;
-                VertexPositionInputs vertexInput = GetVertexPositionInputs(input.positionOS.xyz);
-                output.positionCS = vertexInput.positionCS;
+                v2f o;
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                float3 worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
 
                 float accumulatedPotential = 0.0;
                 float totalWeight = 0.0;
 
                 for (int i = 0; i < _ActiveChannelCount; i++)
                 {
-                    float dist = distance(input.positionOS.xyz, _ElectrodePositions[i]);
+                    float3 ep = mul(unity_ObjectToWorld, float4(_ElectrodePositions[i], 1.0)).xyz;
+                    float dist = distance(worldPos, ep);
                     float weight = exp(-(dist * dist) / (_InfluenceRadius * _InfluenceRadius));
                     accumulatedPotential += _ElectrodePotentials[i] * weight;
                     totalWeight += weight;
                 }
 
                 float normPotential = (totalWeight > 0.0) ? (accumulatedPotential / totalWeight) : 0.0;
-                normPotential = clamp(normPotential, -1.0, 1.0);
-
-                if (normPotential >= 0.0)
-                {
-                    output.color = lerp(_BaseColor, _HotColor, normPotential);
-                }
-                else
-                {
-                    output.color = lerp(_BaseColor, _ColdColor, -normPotential);
-                }
-
-                return output;
+                normPotential = clamp(normPotential, 0.0, 1.0);
+                o.color = lerp(_BaseColor, _HotColor, normPotential);
+                return o;
             }
 
-            float4 frag(Varyings input) : SV_Target
+            fixed4 frag(v2f i) : SV_Target
             {
-                return input.color;
+                return i.color;
             }
-            ENDHLSL
+            ENDCG
         }
     }
 }

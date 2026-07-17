@@ -97,51 +97,44 @@ public class ShmConsumerExample : MonoBehaviour
 
     private void BackgroundWorker()
     {
-        unsafe
+        while (_running)
         {
-            ulong* heartbeatPtr = (ulong*)_shmBase.ToPointer();
-            ulong* headPtr = (ulong*)(_shmBase + HeadOffset).ToPointer();
-            ulong* tailPtr = (ulong*)(_shmBase + TailOffset).ToPointer();
-
-            while (_running)
+            long hb = Marshal.ReadInt64(_shmBase, HeartbeatOffset);
+            if (hb == (long)_lastHeartbeat)
             {
-                ulong hb = *heartbeatPtr;
-                if (hb == _lastHeartbeat)
+                Thread.Sleep(pollIntervalMs);
+                continue;
+            }
+            _lastHeartbeat = (ulong)hb;
+
+            long head = Marshal.ReadInt64(_shmBase, HeadOffset);
+            long tail = Marshal.ReadInt64(_shmBase, TailOffset);
+
+            while (tail < head)
+            {
+                long slotIdx = tail & (RingSize - 1);
+                int slotStride = 8 + maxChannels * 16;
+                IntPtr slotAddr = IntPtr.Add(_shmBase, HeaderSize + (int)slotIdx * slotStride);
+
+                uint chCount = (uint)Marshal.ReadInt32(slotAddr, 4);
+                IntPtr chanBase = IntPtr.Add(slotAddr, 8);
+
+                float[] intensities = new float[chCount];
+                for (int i = 0; i < (int)chCount && i < maxChannels; i++)
                 {
-                    Thread.Sleep(pollIntervalMs);
-                    continue;
+                    byte[] b = new byte[4];
+                    Marshal.Copy(IntPtr.Add(chanBase, i * 16 + 4), b, 0, 4);
+                    intensities[i] = BitConverter.ToSingle(b, 0);
                 }
-                _lastHeartbeat = hb;
 
-                ulong head = *headPtr;
-                ulong tail = *tailPtr;
-
-                while (tail < head)
+                _inbox.Enqueue(new FrameData
                 {
-                    ulong slotIdx = tail & (RingSize - 1);
-                    IntPtr slotAddr = _shmBase + HeaderSize + (int)(slotIdx * (8 + maxChannels * 16));
+                    heartbeat = _lastHeartbeat,
+                    intensities = intensities,
+                });
 
-                    uint packetId = *(uint*)slotAddr;
-                    uint chCount = *(uint*)(slotAddr + 4);
-                    IntPtr chanBase = slotAddr + 8;
-
-                    float[] intensities = new float[chCount];
-                    for (int i = 0; i < (int)chCount && i < maxChannels; i++)
-                    {
-                        // GustationChannel layout: channelId(4) + intensity(4) + durationMs(4) + chemProfile(1) + pad(3) = 16
-                        float intensity = *(float*)(chanBase + i * 16 + 4);
-                        intensities[i] = intensity;
-                    }
-
-                    _inbox.Enqueue(new FrameData
-                    {
-                        heartbeat = _lastHeartbeat,
-                        intensities = intensities,
-                    });
-
-                    tail++;
-                    *tailPtr = tail;
-                }
+                tail++;
+                Marshal.WriteInt64(_shmBase, TailOffset, tail);
             }
         }
     }

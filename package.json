@@ -4,7 +4,7 @@
   "displayName": "BCI Runtime \u2014 Shared Memory IPC",
   "description": "Cross-process shared-memory ring buffer with OS-event signaling for BCI neural-engine-to-unity communication.\n\nSupports Windows (kernel32) and Linux (POSIX semaphores) backends.\nPart of Project Synapse.",
   "unity": "2022.3",
-  "documentationUrl": "https://github.com/dawsonrtech-ui/bci-runtime/tree/main/Packages/com.bci-runtime.shm",
+  "documentationUrl": "https://github.com/dawsonrtech-ui/bci-runtime/tree/v2.1.0/Packages/com.bci-runtime.shm",
   "license": "MIT",
   "keywords": [
     "bci",
@@ -25,6 +25,11 @@
       "displayName": "SHM Consumer Example",
       "description": "Example scene with ShmNativeConsumer attached and wired to debug output.",
       "path": "Samples~/ShmConsumerExample"
+    },
+    {
+      "displayName": "BCI Full Dashboard",
+      "description": "Complete dashboard with scalp topography, scrolling 8-channel waveform, control panel (FPS, ACKs, commands), and CSV recording. Attach BCIDashboard.cs to any GameObject and hit Play.",
+      "path": "Samples~/BCIDashboard"
     }
   ],
   "type": "library"
