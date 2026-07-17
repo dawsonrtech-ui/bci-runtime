@@ -42,7 +42,7 @@ def inject_version(version: str):
     with open(PKG_JSON, "w") as f:
         json.dump(data, f, indent=2)
         f.write("\n")
-    log(f"package.json: {old} → {version}")
+    log(f"package.json: {old} -> {version}")
 
 
 def build_wheel():
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         die("No tag provided and GITHUB_REF_NAME not set")
 
     version = parse_tag(tag)
-    log(f"Tag: {tag} → version: {version}")
+    log(f"Tag: {tag} -> version: {version}")
 
     # Step 1: inject version
     inject_version(version)

@@ -1,0 +1,61 @@
+name: Unity Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      scene:
+        description: 'Scene to build (dashboard, topography, bars)'
+        default: 'dashboard'
+        required: true
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+  UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+jobs:
+  build:
+    name: Build Windows x64
+    runs-on: ubuntu-latest
+    container:
+      image: gableroux/unity3d:2022.3.29f1-windows-mono
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set scene path
+        id: scene
+        run: |
+          case "${{ github.event.inputs.scene }}" in
+            topography) echo "scene=Assets/Scenes/ScalpTopography.unity" >> $GITHUB_OUTPUT ;;
+            bars)       echo "scene=Assets/Scenes/SHMDemo.unity" >> $GITHUB_OUTPUT ;;
+            *)          echo "scene=Assets/Scenes/BCIDashboard.unity" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build Unity project
+        run: |
+          /opt/Unity/Editor/Unity \
+            -batchmode \
+            -nographics \
+            -logFile build.log \
+            -projectPath . \
+            -buildTarget StandaloneWindows64 \
+            -quit \
+            -executeMethod BuildPlayer.BuildWindows
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bci-unity-build-${{ github.ref_name }}
+          path: build/
+          retention-days: 30
+
+      - name: Release asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/BCI*.exe
+          tag_name: ${{ github.ref_name }}
