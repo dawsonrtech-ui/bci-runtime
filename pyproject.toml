@@ -50,9 +50,9 @@ bridge = []  # native bridge compiled at install time via setup.py
 bci-daemon = "daemon_entry:main"
 
 [project.urls]
-Homepage = "https://github.com/your-org/bci-runtime"
-Documentation = "https://github.com/your-org/bci-runtime/wiki"
-Source = "https://github.com/your-org/bci-runtime"
+Homepage = "https://github.com/dawsonrtech-ui/bci-runtime"
+Documentation = "https://github.com/dawsonrtech-ui/bci-runtime/wiki"
+Source = "https://github.com/dawsonrtech-ui/bci-runtime"
 
 [tool.setuptools.packages.find]
 include = [
