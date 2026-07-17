@@ -382,3 +382,111 @@ __all__ = [
     "HEADER_SIZE",
     "HEARTBEAT_SLOP_FRAMES",
 ]
+
+# -- Return channel (Unity ? Python ack/output/command) ------
+RETURN_SHM_NAME = "Local_BCI_GustationRing_Return"
+RETURN_SIGNAL_NAME = "Local_BCI_GustationReturn_Wake"
+RETURN_RING_SIZE = 8
+RETURN_SLOT_MASK = RETURN_RING_SIZE - 1
+
+class ReturnMessageType:
+    FRAME_ACK = 0
+    PROCESSED_OUTPUT = 1
+    COMMAND = 2
+
+class ShmReturnSlot(Structure):
+    _pack_ = 4
+    _fields_ = [
+        ("ack_frame_id",  c_uint64),
+        ("msg_type",      c_uint32),
+        ("channel_count", c_uint32),
+        ("values",        c_float * 16),
+        ("command",       c_uint8 * 32),
+    ]
+
+class SharedReturnBuffer(Structure):
+    _fields_ = [
+        ("head",  c_uint64),
+        ("tail",  c_uint64),
+        ("slots", ShmReturnSlot * RETURN_RING_SIZE),
+    ]
+
+RETURN_TOTAL_SIZE = ctypes.sizeof(SharedReturnBuffer)
+
+class ShmReturnConsumer:
+    """Python consumer for the return channel (reads what Unity wrote)."""
+    def __init__(self, shm_name: str = RETURN_SHM_NAME, signal_name: str = RETURN_SIGNAL_NAME):
+        self._shm_name = shm_name
+        self._signal_name = signal_name
+        self._mmap = None
+        self._ring = None
+        self._shm_signal = None
+
+    def open(self):
+        if os.name == "nt":
+            self._mmap = mmap.mmap(-1, RETURN_TOTAL_SIZE, tagname=self._shm_name, access=mmap.ACCESS_WRITE)
+        else:
+            shm_path = f"/dev/shm/{self._shm_name}"
+            with open(shm_path, "a+b") as f:
+                f.truncate(RETURN_TOTAL_SIZE)
+            fd = os.open(shm_path, os.O_RDWR)
+            self._mmap = mmap.mmap(fd, RETURN_TOTAL_SIZE, access=mmap.ACCESS_WRITE)
+            os.close(fd)
+
+        raw = (ctypes.c_uint8 * RETURN_TOTAL_SIZE).from_buffer(self._mmap)
+        ptr = ctypes.cast(raw, ctypes.POINTER(SharedReturnBuffer))
+        self._ring = ptr.contents
+
+        _load_signal_lib()
+        if _SIG_LIB:
+            self._shm_signal = _SIG_LIB.open_os_signal(self._signal_name.encode("utf-8"))
+        print(f"[SHM-RETURN] Consumer open: {self._shm_name}")
+        return self
+
+    def close(self):
+        if self._shm_signal is not None and _SIG_LIB is not None:
+            _SIG_LIB.close_os_signal(self._shm_signal, self._signal_name.encode("utf-8"))
+        if self._mmap:
+            self._mmap.close()
+        self._ring = None
+
+    def wait(self, timeout_ms: int = 1000) -> bool:
+        if self._shm_signal is None or _SIG_LIB is None:
+            return False
+        return _SIG_LIB.wait_os_signal(self._shm_signal, timeout_ms) == 0
+
+    def read_all(self):
+        if self._ring is None:
+            return []
+        head = self._ring.head
+        tail = self._ring.tail
+        msgs = []
+        while tail < head:
+            slot_idx = tail & RETURN_SLOT_MASK
+            slot = self._ring.slots[slot_idx]
+            cmd_bytes = bytes(b for b in slot.command if b != 0)
+            msgs.append({
+                "ack_frame_id": slot.ack_frame_id,
+                "msg_type": slot.msg_type,
+                "channel_count": slot.channel_count,
+                "values": [slot.values[i] for i in range(slot.channel_count)],
+                "command": cmd_bytes.decode("utf-8", errors="replace") if cmd_bytes else "",
+            })
+            tail += 1
+        self._ring.tail = tail
+        return msgs
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+__all__ += [
+    "RETURN_SHM_NAME",
+    "RETURN_SIGNAL_NAME",
+    "RETURN_RING_SIZE",
+    "ShmReturnSlot",
+    "SharedReturnBuffer",
+    "ShmReturnConsumer",
+]
