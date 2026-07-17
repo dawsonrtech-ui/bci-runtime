@@ -12,16 +12,22 @@ from core.shm_gustation import ShmReturnConsumer
 def main():
     consumer = ShmReturnConsumer()
     consumer.open()
-    print("[RETURN] Listening for Unity messages...")
+    print("[RETURN] Listening for Unity messages... (latency in ms)")
     try:
         while True:
             msgs = consumer.read_all()
             for m in msgs:
                 t = {0: "ACK", 1: "PROCESSED", 2: "CMD"}
+                latency = ""
+                if m["values"] and m["values"][0] > 0:
+                    now = time.monotonic()
+                    delta = (now - m["values"][0]) * 1000
+                    latency = f" {delta:.2f}ms"
                 print(f"[RETURN] {t.get(m['msg_type'], '?')} "
-                      f"frame={m['ack_frame_id']} "
-                      f"ch={m['channel_count']} "
-                      f"cmd='{m['command']}'")
+                      f"frame={m['ack_frame_id']}"
+                      f"{latency}"
+                      f" ch={m['channel_count']}"
+                      f" cmd='{m['command']}'")
             if not msgs:
                 consumer.wait(200)
             else:

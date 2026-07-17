@@ -106,13 +106,14 @@ def run_closed_loop(hz: int = 250, duration_s: float = 10.0,
             elapsed = now - t0
             t = elapsed if not _cmd_stop else 0
 
+            chan_time = time.monotonic()  # for latency tracking
             channels = []
             for ch in range(N_CHANNELS):
                 intensity = mock_eeg_sample(t, ch)
                 channels.append(GustationChannel(
                     channel_id=ch,
                     intensity=intensity,
-                    duration_ms=1000.0 / actual_hz,
+                    duration_ms=chan_time if ch == 0 else 1000.0 / actual_hz,
                     chemical_profile=ch,
                 ))
 
