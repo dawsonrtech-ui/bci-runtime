@@ -12,11 +12,10 @@ public class ShmAutoReconnector : MonoBehaviour
     public int pollIntervalMs = 4;
     public float heartbeatTimeoutSec = 3f;
 
-    [Header("Status (read only)")]
-    public bool IsConnected { get; private set; }
-    public long HeartbeatCount { get; private set; }
-    public long FramesRead { get; private set; }
-    public float LastFrameTime { get; private set; }
+    [Header("Status")]
+    public bool IsConnected = false;
+    public long HeartbeatCount = 0;
+    public long FramesRead = 0;
 
     public event Action OnConnected;
     public event Action OnDisconnected;
@@ -119,7 +118,7 @@ public class ShmAutoReconnector : MonoBehaviour
             {
                 long hb = Marshal.ReadInt64(_shmBase, 0);
                 if (hb == _lastHeartbeat) { Thread.Sleep(pollIntervalMs); continue; }
-                _lastHeartbeat = hb;
+                _lastHeartbeat = hb; HeartbeatCount++;
                 long head = Marshal.ReadInt64(_shmBase, 8);
                 long tail = Marshal.ReadInt64(_shmBase, 16);
 
