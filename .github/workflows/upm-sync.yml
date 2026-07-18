@@ -1,0 +1,21 @@
+name: Sync UPM Branch
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Sync upm branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Split and push UPM branch
+        run: |
+          git subtree split --prefix Packages/com.bci-runtime.shm --branch upm-temp
+          git push origin upm-temp:upm --force
+          git branch -D upm-temp
