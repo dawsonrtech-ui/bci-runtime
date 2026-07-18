@@ -1,0 +1,13 @@
+{
+    "shm_name": "Local_BCI_GustationRing",
+    "return_shm_name": "Local_BCI_GustationRing_Return",
+    "ring_buffer_size": 32,
+    "slot_header_size": 8,
+    "channel_header_size": 8,
+    "channel_stride": 16,
+    "max_channels": 8,
+    "header_size": 24,
+    "poll_interval_ms": 4,
+    "heartbeat_timeout_sec": 3.0,
+    "return_ring_buffer_size": 8
+}

@@ -7,10 +7,13 @@ using System.Collections.Concurrent;
 public class ShmAutoReconnector : MonoBehaviour
 {
     [Header("SHM Config")]
-    public string shmName = "Local_BCI_GustationRing";
-    public int maxChannels = 8;
+    public string shmName = "";
+    public int maxChannels = 0;
     public int pollIntervalMs = 4;
     public float heartbeatTimeoutSec = 3f;
+
+    public string EffectiveShmName => string.IsNullOrEmpty(shmName) ? ShmConfig.ShmName : shmName;
+    public int EffectiveMaxChannels => maxChannels > 0 ? maxChannels : ShmConfig.MaxChannels;
 
     [Header("Status")]
     public bool IsConnected = false;
@@ -39,8 +42,18 @@ public class ShmAutoReconnector : MonoBehaviour
     private bool _running;
     private float _lastFrameArrival;
     private ConcurrentQueue<float[]> _inbox = new ConcurrentQueue<float[]>();
+    private float[][] _bufferPool;
+    private int _poolIdx;
+    private readonly byte[] _readBuf4 = new byte[4];
 
-    void Start() => TryConnect();
+    void Start()
+    {
+        _bufferPool = new float[EffectiveMaxChannels + 4][];
+        for (int i = 0; i < _bufferPool.Length; i++)
+            _bufferPool[i] = new float[EffectiveMaxChannels];
+        _poolIdx = 0;
+        TryConnect();
+    }
 
     void OnEnable()
     {
@@ -59,7 +72,6 @@ public class ShmAutoReconnector : MonoBehaviour
     {
         float now = Time.unscaledTime;
 
-        // Heartbeat check
         if (IsConnected && now - _lastFrameArrival > heartbeatTimeoutSec && _inbox.IsEmpty)
         {
             Debug.LogWarning("[SHM] Producer stalled, reconnecting...");
@@ -68,7 +80,6 @@ public class ShmAutoReconnector : MonoBehaviour
             OnDisconnected?.Invoke();
         }
 
-        // Auto-reconnect
         if (!IsConnected)
         {
             if (_shmBase == IntPtr.Zero)
@@ -76,7 +87,6 @@ public class ShmAutoReconnector : MonoBehaviour
             return;
         }
 
-        // Drain inbox
         while (_inbox.TryDequeue(out float[] intensities))
         {
             FramesRead++;
@@ -90,7 +100,7 @@ public class ShmAutoReconnector : MonoBehaviour
     public void TryConnect()
     {
         Disconnect();
-        _hMap = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, shmName);
+        _hMap = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, EffectiveShmName);
         if (_hMap == IntPtr.Zero) return;
         _shmBase = MapViewOfFile(_hMap, FILE_MAP_ALL_ACCESS, 0, 0, UIntPtr.Zero);
         if (_shmBase == IntPtr.Zero) { CloseHandle(_hMap); _hMap = IntPtr.Zero; return; }
@@ -108,7 +118,7 @@ public class ShmAutoReconnector : MonoBehaviour
     void BackgroundWorker()
     {
         int chHeader = 8, chStride = 16;
-        int slotStride = chHeader + maxChannels * chStride;
+        int slotStride = chHeader + EffectiveMaxChannels * chStride;
 
         while (_running)
         {
@@ -128,12 +138,12 @@ public class ShmAutoReconnector : MonoBehaviour
                     IntPtr slotAddr = IntPtr.Add(_shmBase, HeaderSize + (int)slotIdx * slotStride);
                     uint chCount = (uint)Marshal.ReadInt32(slotAddr, 4);
                     IntPtr chanBase = IntPtr.Add(slotAddr, chHeader);
-                    float[] intensities = new float[chCount];
-                    for (int i = 0; i < (int)chCount && i < maxChannels; i++)
+                    float[] intensities = _bufferPool[_poolIdx % _bufferPool.Length];
+                    _poolIdx++;
+                    for (int i = 0; i < (int)chCount && i < EffectiveMaxChannels; i++)
                     {
-                        byte[] b = new byte[4];
-                        Marshal.Copy(IntPtr.Add(chanBase, i * chStride + 4), b, 0, 4);
-                        intensities[i] = BitConverter.ToSingle(b, 0);
+                        Marshal.Copy(IntPtr.Add(chanBase, i * chStride + 4), _readBuf4, 0, 4);
+                        intensities[i] = BitConverter.ToSingle(_readBuf4, 0);
                     }
                     _inbox.Enqueue(intensities);
                     tail++;

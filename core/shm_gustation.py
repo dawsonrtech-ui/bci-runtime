@@ -7,10 +7,13 @@ import weakref
 from ctypes import c_uint8, c_uint32, c_uint64, c_float, c_int, c_bool, c_void_p, c_wchar_p, Structure, POINTER
 from typing import Optional, List
 
-SHM_NAME = "Local_BCI_GustationRing"
+from .shm_config import load_config
+
+_cfg = load_config()
+SHM_NAME = _cfg["shm_name"]
 SIGNAL_NAME = "Local_BCI_GustationWake"
-RING_BUFFER_SIZE = 32
-MAX_CHANNELS_PER_FRAME = 16
+RING_BUFFER_SIZE = _cfg["ring_buffer_size"]
+MAX_CHANNELS_PER_FRAME = _cfg["max_channels"]
 SLOT_MASK = RING_BUFFER_SIZE - 1
 
 
@@ -384,9 +387,9 @@ __all__ = [
 ]
 
 # -- Return channel (Unity ? Python ack/output/command) ------
-RETURN_SHM_NAME = "Local_BCI_GustationRing_Return"
+RETURN_SHM_NAME = _cfg.get("return_shm_name", "Local_BCI_GustationRing_Return")
 RETURN_SIGNAL_NAME = "Local_BCI_GustationReturn_Wake"
-RETURN_RING_SIZE = 8
+RETURN_RING_SIZE = _cfg.get("return_ring_buffer_size", 8)
 RETURN_SLOT_MASK = RETURN_RING_SIZE - 1
 
 class ReturnMessageType:
