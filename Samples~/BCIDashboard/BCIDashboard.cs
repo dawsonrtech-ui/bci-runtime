@@ -2,80 +2,106 @@ using UnityEngine;
 using UnityEngine.UI;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Text;
+using System.Collections.Generic;
 
 public class BCIDashboard : MonoBehaviour
 {
-    // ── SHM config ──
-    public string shmName = "Local_BCI_GustationRing";
+    [Header("SHM Config")]
     public int maxChannels = 8;
-    public int pollIntervalMs = 4;
 
-    // ── Display config ──
+    [Header("Display Config")]
     public Color baseColor = new Color(0.15f, 0.15f, 0.15f);
     public Color hotColor = new Color(1f, 0.3f, 0f);
     public float influenceRadius = 0.3f;
     public bool recordingEnabled = false;
     public string recordPath = "recordings";
 
-    // ── P/Invoke ──
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    private static extern IntPtr OpenFileMapping(uint dwDesiredAccess, bool bInheritHandle, string lpName);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr MapViewOfFile(IntPtr hFileMappingObject, uint dwDesiredAccess, uint dwFileOffsetHigh, uint dwFileOffsetLow, UIntPtr dwNumberOfBytesToMap);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool UnmapViewOfFile(IntPtr lpBaseAddress);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
-    private const uint FILE_MAP_ALL_ACCESS = 0xF001F;
-    private const int RingSize = 32;
-    private const int HeaderSize = 24;
-
-    private IntPtr _hMap = IntPtr.Zero, _shmBase = IntPtr.Zero;
-    private bool _running;
-    private long _lastHeartbeat, _frameCount, _ackCount;
-    private struct FrameData { public float[] intensities; public long id; }
-    private readonly ConcurrentQueue<FrameData> _inbox = new ConcurrentQueue<FrameData>();
+    private ShmAutoReconnector _shm;
     private ShmReturnWriter _returnWriter;
 
-    // ── Topography ──
+    private long _ackCount, _frameCount;
+    private float _fpsAccum;
+    private int _fpsFrames;
+
+    // Topography
     private BCITopographyMeshDriver _driver;
     private Transform[] _electrodes;
-    private GameObject _legendBar, _legendLabel;
 
-    // ── Waveform ──
-    private class ChannelWaveform { public float[] buffer; public int head; }
+    // Waveform
+    private class ChannelWaveform { public float[] buffer; public int head; public Color[] pix; }
     private ChannelWaveform[] _waveforms;
     private RawImage[] _waveformImages;
     private Texture2D[] _waveformTex;
 
-    // ── Control panel ──
+    // Control panel
     private Text _fpsLabel, _ackLabel, _statusLabel, _chLabels;
     private Button[] _cmdButtons;
-    private Toggle _recToggle;
 
-    // ── Recording ──
+    // Recording
     private StreamWriter _recWriter;
     private float _recStartTime;
     private int _recFrameCount;
 
-    // ── FPS ──
-    private float _fpsAccum;
-    private int _fpsFrames;
-    private float _fpsNextAvg;
-
     void Start()
     {
+        _shm = gameObject.AddComponent<ShmAutoReconnector>();
+        _shm.OnFrame += OnFrameData;
+        _shm.OnConnected += () => { if (_statusLabel != null) _statusLabel.text = "Connected"; };
+        _shm.OnDisconnected += () => { if (_statusLabel != null) _statusLabel.text = "Disconnected — reconnecting..."; };
+
         _returnWriter = new ShmReturnWriter();
         _returnWriter.Connect();
+
         BuildDashboard();
-        TryAttach();
     }
+
+    void OnDestroy()
+    {
+        ToggleRecording(false);
+        if (_returnWriter != null) { _returnWriter.Dispose(); _returnWriter = null; }
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape)) { ToggleRecording(false); Application.Quit(); }
+
+        _fpsFrames++;
+        _fpsAccum += Time.unscaledDeltaTime;
+        if (Time.unscaledTime >= Mathf.Floor(Time.unscaledTime) + 1f && _fpsLabel != null)
+        {
+            _fpsLabel.text = $"FPS: {Mathf.RoundToInt(_fpsFrames / _fpsAccum)}";
+            _fpsFrames = 0;
+            _fpsAccum = 0;
+        }
+
+        if (_ackLabel != null) _ackLabel.text = $"ACKs: {_ackCount}";
+    }
+
+    void OnFrameData(float[] intensities)
+    {
+        _frameCount++;
+        if (_driver != null) _driver.UpdateScalpPotentials(intensities);
+        UpdateWaveform(intensities);
+
+        if (_returnWriter != null)
+        {
+            _returnWriter.SendAck((ulong)_frameCount, Time.realtimeSinceStartup);
+            _ackCount++;
+        }
+
+        if (_chLabels != null)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < intensities.Length && i < maxChannels; i++)
+                sb.AppendLine($"Ch{i}: {intensities[i]:F3}");
+            _chLabels.text = sb.ToString();
+        }
+
+        if (recordingEnabled) RecordFrame(intensities);
+    }
+
+    // ═══════════════════════ UI BUILD ═══════════════════════
 
     void BuildDashboard()
     {
@@ -84,7 +110,7 @@ public class BCIDashboard : MonoBehaviour
         BuildControlPanel();
     }
 
-    // ═══════════════════════ SCALP TOPOGRAPHY ═══════════════════════
+    // ═══════════ SCALP TOPOGRAPHY ═══════════
 
     void BuildScalpMesh()
     {
@@ -177,7 +203,7 @@ public class BCIDashboard : MonoBehaviour
         light.intensity = 0.8f;
     }
 
-    // ═══════════════════════ WAVEFORM ═══════════════════════
+    // ═══════════ WAVEFORM ═══════════
 
     void BuildWaveform()
     {
@@ -202,7 +228,7 @@ public class BCIDashboard : MonoBehaviour
 
         for (int i = 0; i < maxChannels; i++)
         {
-            _waveforms[i] = new ChannelWaveform { buffer = new float[bufLen], head = 0 };
+            _waveforms[i] = new ChannelWaveform { buffer = new float[bufLen], head = 0, pix = new Color[bufLen] };
             _waveformTex[i] = new Texture2D(bufLen, 1, TextureFormat.RFloat, false);
             _waveformTex[i].filterMode = FilterMode.Point;
             _waveformTex[i].wrapMode = TextureWrapMode.Clamp;
@@ -234,24 +260,23 @@ public class BCIDashboard : MonoBehaviour
             w.buffer[w.head] = intensities[i];
             w.head = (w.head + 1) % w.buffer.Length;
         }
-        int bufLen = 256;
         for (int i = 0; i < maxChannels; i++)
         {
             if (_waveformTex[i] == null) continue;
             var w = _waveforms[i];
-            var pix = new Color[bufLen];
+            int bufLen = w.buffer.Length;
             for (int p = 0; p < bufLen; p++)
             {
                 int idx = (w.head + p) % bufLen;
                 float val = Mathf.Clamp01(w.buffer[idx]);
-                pix[p] = new Color(val, val, val);
+                w.pix[p].r = val; w.pix[p].g = val; w.pix[p].b = val; w.pix[p].a = 1f;
             }
-            _waveformTex[i].SetPixels(pix);
+            _waveformTex[i].SetPixels(w.pix);
             _waveformTex[i].Apply();
         }
     }
 
-    // ═══════════════════════ CONTROL PANEL ═══════════════════════
+    // ═══════════ CONTROL PANEL ═══════════
 
     Transform EnsureCanvas(string name, int sortOrder)
     {
@@ -283,30 +308,16 @@ public class BCIDashboard : MonoBehaviour
 
         float px = 10, py = -10;
 
-        // FPS
-        _fpsLabel = MakeLabel(panel.transform, "FPSLabel", "FPS: --", 18,
-            TextAnchor.MiddleLeft, new Vector2(px, py));
+        _fpsLabel = MakeLabel(panel.transform, "FPSLabel", "FPS: --", 18, TextAnchor.MiddleLeft, new Vector2(px, py));
         py -= 26;
-
-        // ACK
-        _ackLabel = MakeLabel(panel.transform, "AckLabel", "ACKs: 0", 18,
-            TextAnchor.MiddleLeft, new Vector2(px, py));
+        _ackLabel = MakeLabel(panel.transform, "AckLabel", "ACKs: 0", 18, TextAnchor.MiddleLeft, new Vector2(px, py));
         py -= 26;
-
-        // Status
-        _statusLabel = MakeLabel(panel.transform, "StatusLabel", "Connecting...", 18,
-            TextAnchor.MiddleLeft, new Vector2(px, py));
+        _statusLabel = MakeLabel(panel.transform, "StatusLabel", "Connecting...", 18, TextAnchor.MiddleLeft, new Vector2(px, py));
         py -= 30;
-
-        // Channel values
-        _chLabels = MakeLabel(panel.transform, "ChLabels", "", 13,
-            TextAnchor.UpperLeft, new Vector2(px, py));
+        _chLabels = MakeLabel(panel.transform, "ChLabels", "", 13, TextAnchor.UpperLeft, new Vector2(px, py));
         py -= 180;
-
-        // Separator
         py -= 10;
 
-        // Command buttons
         string[] cmds = { "5 Hz", "10 Hz", "20 Hz", "50 Hz", "100 Hz", "Reset", "Stop" };
         _cmdButtons = new Button[cmds.Length];
         for (int i = 0; i < cmds.Length; i++)
@@ -353,7 +364,6 @@ public class BCIDashboard : MonoBehaviour
         int btnRows = (cmds.Length + 1) / 2;
         float buttonsBottom = py - btnRows * 30 - 10;
 
-        // Recording toggle
         var togGO = new GameObject("RecToggle");
         togGO.transform.SetParent(panel.transform, false);
         var tog = togGO.AddComponent<Toggle>();
@@ -364,7 +374,6 @@ public class BCIDashboard : MonoBehaviour
         togRt.anchorMax = new Vector2(0, 1);
         togRt.sizeDelta = new Vector2(20, 20);
         togRt.anchoredPosition = new Vector3(px, buttonsBottom, 0);
-        _recToggle = tog;
 
         var togLabelObj = new GameObject("RecLabel");
         togLabelObj.transform.SetParent(panel.transform, false);
@@ -446,99 +455,5 @@ public class BCIDashboard : MonoBehaviour
         _recFrameCount++;
         for (int i = 0; i < intensities.Length && i < maxChannels; i++)
             _recWriter.WriteLine($"{_recFrameCount},{i},{intensities[i]:F6}");
-    }
-
-    // ═══════════════════════ SHM READER ═══════════════════════
-
-    void TryAttach()
-    {
-        _hMap = OpenFileMapping(FILE_MAP_ALL_ACCESS, false, shmName);
-        if (_hMap == IntPtr.Zero) { if (_statusLabel != null) _statusLabel.text = "SHM not found"; return; }
-        _shmBase = MapViewOfFile(_hMap, FILE_MAP_ALL_ACCESS, 0, 0, UIntPtr.Zero);
-        if (_shmBase == IntPtr.Zero) { CloseHandle(_hMap); _hMap = IntPtr.Zero; return; }
-        _running = true;
-        if (_statusLabel != null) _statusLabel.text = "Connected";
-        new Thread(BackgroundWorker) { IsBackground = true }.Start();
-    }
-
-    void BackgroundWorker()
-    {
-        int headOff = 8, tailOff = 16, chHeader = 8, chStride = 16;
-        int slotStride = chHeader + maxChannels * chStride;
-
-        while (_running)
-        {
-            long hb = Marshal.ReadInt64(_shmBase, 0);
-            if (hb == _lastHeartbeat) { Thread.Sleep(pollIntervalMs); continue; }
-            _lastHeartbeat = hb;
-            long head = Marshal.ReadInt64(_shmBase, headOff);
-            long tail = Marshal.ReadInt64(_shmBase, tailOff);
-
-            while (tail < head)
-            {
-                long slotIdx = tail & (RingSize - 1);
-                IntPtr slotAddr = IntPtr.Add(_shmBase, HeaderSize + (int)slotIdx * slotStride);
-                uint chCount = (uint)Marshal.ReadInt32(slotAddr, 4);
-                IntPtr chanBase = IntPtr.Add(slotAddr, chHeader);
-                float[] intensities = new float[chCount];
-                for (int i = 0; i < (int)chCount && i < maxChannels; i++)
-                {
-                    byte[] b = new byte[4];
-                    Marshal.Copy(IntPtr.Add(chanBase, i * chStride + 4), b, 0, 4);
-                    intensities[i] = BitConverter.ToSingle(b, 0);
-                }
-                _inbox.Enqueue(new FrameData { intensities = intensities, id = (long)tail });
-                tail++;
-                Marshal.WriteInt64(_shmBase, tailOff, tail);
-            }
-        }
-    }
-
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Escape)) { ToggleRecording(false); Application.Quit(); }
-
-        if (!_running) { if (_shmBase == IntPtr.Zero) TryAttach(); return; }
-
-        // FPS
-        _fpsFrames++;
-        _fpsAccum += Time.unscaledDeltaTime;
-        if (Time.unscaledTime >= _fpsNextAvg)
-        {
-            if (_fpsLabel != null) _fpsLabel.text = $"FPS: {Mathf.RoundToInt(_fpsFrames / _fpsAccum)}";
-            _fpsFrames = 0;
-            _fpsAccum = 0;
-            _fpsNextAvg = Time.unscaledTime + 1f;
-        }
-
-        while (_inbox.TryDequeue(out FrameData frame))
-        {
-            _frameCount++;
-            if (_driver != null) _driver.UpdateScalpPotentials(frame.intensities);
-            UpdateWaveform(frame.intensities);
-            if (_returnWriter != null) { _returnWriter.SendAck((ulong)_frameCount); _ackCount++; }
-
-            // Channel labels
-            if (_chLabels != null)
-            {
-                var sb = new StringBuilder();
-                for (int i = 0; i < frame.intensities.Length && i < maxChannels; i++)
-                    sb.AppendLine($"Ch{i}: {frame.intensities[i]:F3}");
-                _chLabels.text = sb.ToString();
-            }
-
-            if (recordingEnabled) RecordFrame(frame.intensities);
-        }
-
-        if (_ackLabel != null) _ackLabel.text = $"ACKs: {_ackCount}";
-    }
-
-    void OnDestroy()
-    {
-        _running = false;
-        ToggleRecording(false);
-        if (_returnWriter != null) { _returnWriter.Dispose(); _returnWriter = null; }
-        if (_shmBase != IntPtr.Zero) { UnmapViewOfFile(_shmBase); _shmBase = IntPtr.Zero; }
-        if (_hMap != IntPtr.Zero) { CloseHandle(_hMap); _hMap = IntPtr.Zero; }
     }
 }
